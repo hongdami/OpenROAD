@@ -26,6 +26,7 @@ class ProjectContractTest(unittest.TestCase):
     def test_orfs_configuration_contract(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()
         sdc = (ROOT / "examples/systolic2x2/constraint.sdc").read_text()
+        pdn = (ROOT / "examples/systolic2x2/pdn.tcl").read_text()
         for value in (
             "DESIGN_NAME = systolic2x2",
             "PLATFORM = nangate45",
@@ -36,6 +37,16 @@ class ProjectContractTest(unittest.TestCase):
             self.assertIn(value, config)
         self.assertIn("set clk_period 10.0", sdc)
         self.assertIn("create_clock", sdc)
+        for value in (
+            "set_voltage_domain -name CORE -power VDD -ground VSS",
+            "define_pdn_grid -name grid -voltage_domains CORE -pins metal7",
+            "add_pdn_stripe -grid grid -layer metal1",
+            "add_pdn_stripe -grid grid -layer metal4",
+            "add_pdn_stripe -grid grid -layer metal7",
+            "add_pdn_connect -grid grid -layers {metal1 metal4}",
+            "add_pdn_connect -grid grid -layers {metal4 metal7}",
+        ):
+            self.assertIn(value, pdn)
 
     def test_orfs_signed_port_compatibility_adapter(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()
@@ -45,16 +56,106 @@ class ProjectContractTest(unittest.TestCase):
         adapter = (
             ROOT / "examples/systolic2x2/orfs_unsigned_top.v"
         ).read_text()
+        adapter_test = (
+            ROOT / "tests/yosys/orfs_adapter.ys"
+        ).read_text()
+        adapter_test_driver = (
+            ROOT / "tests/yosys/orfs_adapter.tcl"
+        ).read_text()
         self.assertIn(
             "SYNTH_CANONICALIZE_TCL = "
             "/work/examples/systolic2x2/orfs_canonicalize.tcl",
             config,
         )
-        self.assertIn(
-            "rename systolic2x2 systolic2x2_signed", canonicalize
+        commands = [
+            line.strip()
+            for line in canonicalize.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(
+            commands,
+            [
+                "yosys rename systolic2x2 systolic2x2_signed",
+                "read_verilog "
+                "/work/examples/systolic2x2/orfs_unsigned_top.v",
+                "hierarchy -check -top systolic2x2",
+            ],
         )
-        self.assertIn("module systolic2x2", adapter)
-        self.assertIn("systolic2x2_signed wrapped_design", adapter)
+        adapter_code = "\n".join(
+            line.split("//", 1)[0] for line in adapter.splitlines()
+        )
+        for operator in (
+            "$signed",
+            "$unsigned",
+            "{",
+            "}",
+            "+",
+            "-",
+            "*",
+            "/",
+            "%",
+            "?",
+            "&",
+            "|",
+            "^",
+            "~",
+            "!",
+            "'",
+        ):
+            self.assertNotIn(operator, adapter_code)
+        for value in (
+            "tcl /work/tests/yosys/orfs_adapter.tcl",
+            "select -assert-count 12 x:*",
+            "select -assert-count 1 c:wrapped_design",
+            "select -assert-count 1 c:*",
+            "connect -assert -port wrapped_design a_left a_left",
+            "connect -assert -port wrapped_design c11 c11",
+        ):
+            self.assertIn(value, adapter_test)
+        for port in (
+            "clk",
+            "reset",
+            "valid_in",
+            "start",
+            "last",
+            "a_left",
+            "b_top",
+            "c00",
+            "c01",
+            "c10",
+            "c11",
+            "done",
+        ):
+            self.assertIn(
+                f"connect -assert -port wrapped_design {port} {port}",
+                adapter_test,
+            )
+        for port_contract in (
+            "i:clk",
+            "i:reset",
+            "i:valid_in",
+            "i:start",
+            "i:last",
+            "i:a_left s:16 %i",
+            "i:b_top s:16 %i",
+            "o:c00 s:24 %i",
+            "o:c01 s:24 %i",
+            "o:c10 s:24 %i",
+            "o:c11 s:24 %i",
+            "o:done",
+        ):
+            self.assertIn(
+                f"select -assert-count 1 {port_contract}",
+                adapter_test,
+            )
+        self.assertEqual(
+            adapter_test_driver.splitlines(),
+            [
+                "yosys -import",
+                "source "
+                "/work/examples/systolic2x2/orfs_canonicalize.tcl",
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,40 @@
+# tests/yosys/orfs_adapter.ys
+read_verilog -sv /work/examples/systolic2x2/rtl/processing_element.sv
+read_verilog -sv /work/examples/systolic2x2/rtl/systolic2x2.sv
+hierarchy -check -top systolic2x2
+tcl /work/tests/yosys/orfs_adapter.tcl
+
+select -module systolic2x2
+select -assert-count 12 x:*
+select -assert-count 1 i:clk
+select -assert-count 1 i:reset
+select -assert-count 1 i:valid_in
+select -assert-count 1 i:start
+select -assert-count 1 i:last
+select -assert-count 1 i:a_left s:16 %i
+select -assert-count 1 i:b_top s:16 %i
+select -assert-count 1 o:c00 s:24 %i
+select -assert-count 1 o:c01 s:24 %i
+select -assert-count 1 o:c10 s:24 %i
+select -assert-count 1 o:c11 s:24 %i
+select -assert-count 1 o:done
+select -assert-count 5 i:* s:1 %i
+select -assert-count 2 i:* s:16 %i
+select -assert-count 1 o:* s:1 %i
+select -assert-count 4 o:* s:24 %i
+select -assert-count 1 c:wrapped_design
+select -assert-count 1 c:*
+
+connect -assert -port wrapped_design clk clk
+connect -assert -port wrapped_design reset reset
+connect -assert -port wrapped_design valid_in valid_in
+connect -assert -port wrapped_design start start
+connect -assert -port wrapped_design last last
+connect -assert -port wrapped_design a_left a_left
+connect -assert -port wrapped_design b_top b_top
+connect -assert -port wrapped_design c00 c00
+connect -assert -port wrapped_design c01 c01
+connect -assert -port wrapped_design c10 c10
+connect -assert -port wrapped_design c11 c11
+connect -assert -port wrapped_design done done
+check -assert
