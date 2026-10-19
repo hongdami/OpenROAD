@@ -23,6 +23,16 @@ class ProjectContractTest(unittest.TestCase):
         for tool in ("yosys -V", "openroad -version", "klayout -v"):
             self.assertIn(tool, text)
 
+    def test_flow_scripts_preserve_stage_failures(self):
+        baseline = (ROOT / "scripts/run_gcd_baseline.sh").read_text()
+        custom = (ROOT / "scripts/run_systolic2x2.sh").read_text()
+        self.assertIn("set -euo pipefail", baseline)
+        self.assertIn("set -euo pipefail", custom)
+        self.assertLess(baseline.index(" all"), baseline.index(" drc"))
+        self.assertLess(baseline.index(" drc"), baseline.index(" lvs"))
+        self.assertIn('[[ -f "$PROJECT_ROOT/work/gcd/PASS" ]]', custom)
+        self.assertIn("gui_final", custom)
+
     def test_orfs_configuration_contract(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()
         sdc = (ROOT / "examples/systolic2x2/constraint.sdc").read_text()
