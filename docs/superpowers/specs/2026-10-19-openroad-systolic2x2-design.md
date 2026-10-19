@@ -85,19 +85,30 @@ input, registered A/B forwarding outputs, and a signed 24-bit accumulator.
 On an active valid cycle it:
 
 1. Multiplies A and B.
-2. Sign-extends the 16-bit product.
-3. Adds the product to the accumulator.
+2. Sign-extends the 16-bit product to 24 bits.
+3. Loads that product when the local `start` token is active, or otherwise
+   adds it to the accumulator.
 4. Registers A toward the right and B toward the bottom.
 
-Reset is synchronous and clears forwarding registers, valid state, and the
-accumulator.
+Reset is synchronous and clears forwarding registers, control state, and the
+accumulator. Each processing element forwards `valid`, `start`, and `last`
+tokens with its A/B data.
 
 ### Array
 
 The top level instantiates four processing elements in a 2×2 grid. A values
 enter from the left and move right; B values enter from the top and move down.
-Valid state follows the data wavefront. The top level exposes four signed
-24-bit accumulated outputs and a completion-valid output.
+On every `valid_in` cycle, the two left-edge A values represent one matrix
+column for the current inner-dimension index, and the two top-edge B values
+represent one matrix row. `start` marks the first inner-dimension term and
+`last` marks the final term. For a fixed 2×2 matrix multiplication, the caller
+therefore presents two consecutive valid cycles, with `start` asserted on the
+first and `last` on the second.
+
+Control tokens follow the same wavefront as data. Each PE updates only when its
+local valid token arrives. A top-level `done` pulse is generated when the
+bottom-right PE consumes its local `last` token; by then all four signed
+24-bit accumulated outputs are stable.
 
 The design has one clock domain and no generated clocks, memories, macros, or
 black boxes. These boundaries keep the first physical-design example focused
