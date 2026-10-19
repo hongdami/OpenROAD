@@ -1,0 +1,11 @@
+# tests/yosys/systolic2x2.ys
+read_verilog -sv /work/examples/systolic2x2/rtl/processing_element.sv
+read_verilog -sv /work/examples/systolic2x2/rtl/systolic2x2.sv
+hierarchy -check -top systolic2x2
+select -assert-count 4 t:processing_element
+flatten
+proc
+opt_clean
+check -assert
+select -assert-min 4 t:$mul
+stat
