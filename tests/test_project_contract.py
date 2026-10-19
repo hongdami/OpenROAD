@@ -23,6 +23,39 @@ class ProjectContractTest(unittest.TestCase):
         for tool in ("yosys -V", "openroad -version", "klayout -v"):
             self.assertIn(tool, text)
 
+    def test_orfs_configuration_contract(self):
+        config = (ROOT / "examples/systolic2x2/config.mk").read_text()
+        sdc = (ROOT / "examples/systolic2x2/constraint.sdc").read_text()
+        for value in (
+            "DESIGN_NAME = systolic2x2",
+            "PLATFORM = nangate45",
+            "/work/examples/systolic2x2/rtl/processing_element.sv",
+            "/work/examples/systolic2x2/rtl/systolic2x2.sv",
+            "CORE_UTILIZATION ?= 35",
+        ):
+            self.assertIn(value, config)
+        self.assertIn("set clk_period 10.0", sdc)
+        self.assertIn("create_clock", sdc)
+
+    def test_orfs_signed_port_compatibility_adapter(self):
+        config = (ROOT / "examples/systolic2x2/config.mk").read_text()
+        canonicalize = (
+            ROOT / "examples/systolic2x2/orfs_canonicalize.tcl"
+        ).read_text()
+        adapter = (
+            ROOT / "examples/systolic2x2/orfs_unsigned_top.v"
+        ).read_text()
+        self.assertIn(
+            "SYNTH_CANONICALIZE_TCL = "
+            "/work/examples/systolic2x2/orfs_canonicalize.tcl",
+            config,
+        )
+        self.assertIn(
+            "rename systolic2x2 systolic2x2_signed", canonicalize
+        )
+        self.assertIn("module systolic2x2", adapter)
+        self.assertIn("systolic2x2_signed wrapped_design", adapter)
+
 
 if __name__ == "__main__":
     unittest.main()
