@@ -14,7 +14,6 @@ module systolic2x2 (
   output logic                      done
 );
   logic signed [7:0] a1_skew, b1_skew;
-  logic skew_valid, skew_start, skew_last;
 
   logic signed [7:0] a00_right, b00_down;
   logic signed [7:0] a01_right, b01_down;
@@ -27,13 +26,7 @@ module systolic2x2 (
     if (reset) begin
       a1_skew <= '0;
       b1_skew <= '0;
-      skew_valid <= 1'b0;
-      skew_start <= 1'b0;
-      skew_last <= 1'b0;
     end else begin
-      skew_valid <= valid_in;
-      skew_start <= valid_in && start;
-      skew_last <= valid_in && last;
       if (valid_in) begin
         a1_skew <= a_left[15:8];
         b1_skew <= b_top[15:8];
