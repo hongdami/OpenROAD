@@ -1,0 +1,6 @@
+/OpenROAD/
+/OpenROAD-flow-scripts/
+/work/
+.superpowers/
+__pycache__/
+*.pyc
