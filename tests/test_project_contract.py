@@ -84,6 +84,10 @@ class ProjectContractTest(unittest.TestCase):
         adapter_code = "\n".join(
             line.split("//", 1)[0] for line in adapter.splitlines()
         )
+        self.assertNotRegex(
+            adapter_code,
+            r"\b(?:input|output)\b[^,;)]*\bsigned\b",
+        )
         for operator in (
             "$signed",
             "$unsigned",
