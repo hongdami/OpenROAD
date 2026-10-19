@@ -1,0 +1,8 @@
+# tests/yosys/processing_element.ys
+read_verilog -sv /work/examples/systolic2x2/rtl/processing_element.sv
+hierarchy -check -top processing_element
+proc
+check -assert
+select -assert-count 1 t:$mul
+select -assert-count 1 t:$add
+stat
