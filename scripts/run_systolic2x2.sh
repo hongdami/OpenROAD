@@ -71,6 +71,7 @@ python3 "$PROJECT_ROOT/scripts/summarize_results.py" \
   --results "$RESULTS" --reports "$REPORTS" --logs "$LOGS" \
   --metadata "$STATUS_DIR/metadata.json" \
   --toolchain "$PROJECT_ROOT/work/toolchain-versions.txt" \
+  --run-command "scripts/run_systolic2x2.sh" \
   --out-dir "$STATUS_DIR"
 
 touch "$STATUS_DIR/PASS"

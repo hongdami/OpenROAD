@@ -9,6 +9,15 @@ command -v docker >/dev/null || { echo "docker is not installed" >&2; exit 1; }
 docker info >/dev/null
 [[ -s "$PROJECT_ROOT/toolchain/orfs-image.txt" ]]
 [[ -s "$PROJECT_ROOT/toolchain/orfs-commit.txt" ]]
+PINNED_COMMIT="$(tr -d '[:space:]' < "$PROJECT_ROOT/toolchain/orfs-commit.txt")"
+CHECKOUT_COMMIT="$(git -C "$PROJECT_ROOT/OpenROAD-flow-scripts" rev-parse HEAD)" || {
+  echo "cannot read OpenROAD-flow-scripts revision" >&2
+  exit 1
+}
+if [[ "$PINNED_COMMIT" != "$CHECKOUT_COMMIT" ]]; then
+  echo "ORFS checkout $CHECKOUT_COMMIT does not match pin $PINNED_COMMIT" >&2
+  exit 1
+fi
 
 AVAILABLE_KIB="$(df -Pk "$PROJECT_ROOT" | awk 'NR==2 {print $4}')"
 if (( AVAILABLE_KIB < REQUIRED_KIB )); then

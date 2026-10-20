@@ -44,7 +44,7 @@ def parse_drc(path: Path) -> int | None:
     if text is None:
         return None
     text = "".join(text.split())
-    return int(text) if text.isdigit() else None
+    return int(text) if re.fullmatch(r"[0-9]+", text) else None
 
 
 def parse_lvs(path: Path) -> str:
@@ -72,10 +72,23 @@ def is_positive(value) -> bool:
     return isinstance(value, (int, float)) and value > 0
 
 
+def load_metadata(path: Path) -> tuple[dict, bool]:
+    text = read_text(path)
+    if not text:
+        return {}, False
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError:
+        return {}, True
+    if isinstance(loaded, dict):
+        return loaded, False
+    return {}, True
+
+
 def summarize(results: Path, reports: Path, logs: Path, metadata: Path,
-              toolchain: Path | None = None) -> dict:
-    meta_text = read_text(metadata)
-    meta = json.loads(meta_text) if meta_text else {}
+              toolchain: Path | None = None,
+              run_command: str = NOT_REPORTED) -> dict:
+    meta, malformed = load_metadata(metadata)
     gds = results / "6_final.gds"
     drc_count = parse_drc(reports / "6_drc_count.rpt")
     lvs_status = parse_lvs(logs / "6_lvs.log")
@@ -87,12 +100,14 @@ def summarize(results: Path, reports: Path, logs: Path, metadata: Path,
     result.update(timing)
 
     wns = timing["wns_ns"]
-    if (not (gds.is_file() and gds.stat().st_size > 0) or drc_count is None
-            or lvs_status == NOT_REPORTED or wns == NOT_REPORTED):
+    counted = ("route_drc_count", "setup_violation_count", "hold_violation_count")
+    metrics_missing = any(result[name] == NOT_REPORTED for name in counted)
+    if (malformed or not (gds.is_file() and gds.stat().st_size > 0)
+            or drc_count is None or lvs_status == NOT_REPORTED
+            or wns == NOT_REPORTED or metrics_missing):
         status = "INCOMPLETE"
     elif (drc_count == 0 and lvs_status == "PASS" and wns >= 0
-          and not is_positive(result["setup_violation_count"])
-          and not is_positive(result["hold_violation_count"])):
+          and not any(is_positive(result[name]) for name in counted)):
         status = "PASS"
     else:
         status = "COMPLETED_WITH_FAILURES"
@@ -105,11 +120,14 @@ def summarize(results: Path, reports: Path, logs: Path, metadata: Path,
         "power_note": "Vectorless ORFS estimate; not workload power.",
         "signoff_note":
             "SKY130HD DRC/LVS is an educational check, not tapeout signoff.",
+        "run_command": run_command,
     })
     return result
 
 
 def fmt(value, scale=1.0, digits=4) -> str:
+    if value is None:
+        return NOT_REPORTED
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return f"{value * scale:.{digits}g}"
     return str(value)
@@ -118,6 +136,7 @@ def fmt(value, scale=1.0, digits=4) -> str:
 def render_markdown(r: dict) -> str:
     rows = [
         ("Status", r["status"]),
+        ("Run command", r["run_command"]),
         ("DRC violations (KLayout)", fmt(r["drc_count"])),
         ("LVS", r["lvs_status"]),
         ("Setup WNS / TNS (ns)", f"{fmt(r['wns_ns'])} / {fmt(r['tns_ns'])}"),
@@ -162,9 +181,10 @@ def main() -> None:
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--toolchain", type=Path)
+    parser.add_argument("--run-command", required=True)
     args = parser.parse_args()
     result = summarize(args.results, args.reports, args.logs, args.metadata,
-                       args.toolchain)
+                       args.toolchain, args.run_command)
     write_outputs(args.out_dir, result)
     print(json.dumps(result, indent=2, sort_keys=True))
     raise SystemExit(0 if result["status"] == "PASS" else 1)

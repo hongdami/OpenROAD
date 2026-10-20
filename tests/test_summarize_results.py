@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.summarize_results import summarize  # noqa: E402
+from scripts.summarize_results import render_markdown, summarize  # noqa: E402
 
 LVS_MATCH = "INFO : Comparing netlists\nINFO : Congratulations! Netlists match.\n"
 LVS_MISMATCH = "INFO : Comparing netlists\nERROR : Netlists don't match\n"
@@ -134,7 +134,56 @@ class SummarizeResultsTest(unittest.TestCase):
             run["metadata"].write_text("{}")
             result = summarize(**run)
         self.assertEqual(result["estimated_power_w"], "NOT_REPORTED")
-        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["route_drc_count"], "NOT_REPORTED")
+        self.assertEqual(result["setup_violation_count"], "NOT_REPORTED")
+        self.assertEqual(result["hold_violation_count"], "NOT_REPORTED")
+        self.assertEqual(result["status"], "INCOMPLETE")
+
+    def test_positive_route_drc_is_failure(self):
+        meta = {"detailedroute__route__drc_errors": 4}
+        with TemporaryDirectory() as tmp:
+            result = summarize(**self.make_run(Path(tmp), metadata=meta))
+        self.assertEqual(result["route_drc_count"], 4)
+        self.assertEqual(result["status"], "COMPLETED_WITH_FAILURES")
+
+    def test_non_ascii_drc_count_is_incomplete(self):
+        for drc in ("²\n", "１\n"):
+            with self.subTest(drc=drc):
+                with TemporaryDirectory() as tmp:
+                    result = summarize(**self.make_run(Path(tmp), drc=drc))
+                self.assertIsNone(result["drc_count"])
+                self.assertEqual(result["status"], "INCOMPLETE")
+                md = render_markdown(result)
+                self.assertIn(
+                    "| DRC violations (KLayout) | NOT_REPORTED |", md)
+                self.assertNotIn("| DRC violations (KLayout) | None |", md)
+
+    def test_malformed_metadata_writes_incomplete_and_exits_nonzero(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self.make_run(root)
+            run["metadata"].write_text("{not json")
+            out = root / "out"
+            proc = self.run_cli(run, out)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotIn("Traceback", proc.stderr)
+            self.assertTrue((out / "summary.json").is_file())
+            self.assertTrue((out / "summary.md").is_file())
+            summary = json.loads((out / "summary.json").read_text())
+            md = (out / "summary.md").read_text()
+        self.assertEqual(summary["status"], "INCOMPLETE")
+        self.assertIn("| Status | INCOMPLETE |", md)
+        self.assertNotIn("| DRC violations (KLayout) | None |", md)
+
+    def run_cli(self, run, out, toolchain=None):
+        cmd = [sys.executable, str(ROOT / "scripts/summarize_results.py"),
+               "--results", run["results"], "--reports", run["reports"],
+               "--logs", run["logs"], "--metadata", run["metadata"],
+               "--out-dir", out,
+               "--run-command", "scripts/run_systolic2x2.sh"]
+        if toolchain is not None:
+            cmd += ["--toolchain", toolchain]
+        return subprocess.run(cmd, capture_output=True, text=True)
 
     def test_cli_writes_outputs_and_reports_toolchain(self):
         with TemporaryDirectory() as tmp:
@@ -143,16 +192,13 @@ class SummarizeResultsTest(unittest.TestCase):
             toolchain = root / "toolchain-versions.txt"
             toolchain.write_text("KLayout 0.30.12\n")
             out = root / "out"
-            proc = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/summarize_results.py"),
-                 "--results", run["results"], "--reports", run["reports"],
-                 "--logs", run["logs"], "--metadata", run["metadata"],
-                 "--toolchain", toolchain, "--out-dir", out],
-                capture_output=True, text=True)
+            proc = self.run_cli(run, out, toolchain)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             summary = json.loads((out / "summary.json").read_text())
             md = (out / "summary.md").read_text()
         self.assertEqual(summary["toolchain"], "KLayout 0.30.12")
+        self.assertEqual(summary["run_command"], "scripts/run_systolic2x2.sh")
+        self.assertIn("| Run command | scripts/run_systolic2x2.sh |", md)
         self.assertIn("| Status | PASS |", md)
         self.assertIn("not workload power", md)
         self.assertIn("not tapeout signoff", md)
@@ -161,12 +207,7 @@ class SummarizeResultsTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             run = self.make_run(root, drc="1\n")
-            proc = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/summarize_results.py"),
-                 "--results", run["results"], "--reports", run["reports"],
-                 "--logs", run["logs"], "--metadata", run["metadata"],
-                 "--out-dir", root / "out"],
-                capture_output=True, text=True)
+            proc = self.run_cli(run, root / "out")
             self.assertNotEqual(proc.returncode, 0)
             self.assertTrue((root / "out/summary.json").exists())
 

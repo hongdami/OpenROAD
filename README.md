@@ -45,9 +45,12 @@ of this design. When DRC and LVS pass, the script writes `work/gcd/PASS`.
 
 `scripts/run_systolic2x2.sh` exits 1 with `run scripts/run_gcd_baseline.sh first`
 unless `work/gcd/PASS` exists. With no arguments it runs ORFS `all`, `drc`,
-and `lvs`, requires a non-empty `6_final.spef`, requires DRC count 0, an LVS
-netlist match, and non-negative final WNS, then writes the summary and
-`work/systolic2x2/PASS`. On success it prints:
+and `lvs`, requires a non-empty `6_final.spef`, then writes
+`work/systolic2x2/summary.json`. It writes the empty `work/systolic2x2/PASS`
+marker only when `scripts/summarize_results.py` exits 0. A summary whose
+status is not `PASS` — for example a positive hold-violation count or a
+positive detailed-route DRC count — is still written, and the script exits
+without that marker. On success it prints:
 
 ```text
 systolic2x2 flow passed DRC, LVS, and timing checks (educational, not tapeout signoff)
@@ -67,9 +70,11 @@ scripts/run_systolic2x2.sh --clean
 ```
 
 `--clean` deletes `work/systolic2x2/PASS` and runs ORFS `clean_all` with this
-design's `WORK_HOME`. That target removes the stage files under `results/`,
-`reports/`, `logs/`, and `objects/`. It leaves `summary.md`, `summary.json`,
-and `metadata.json` in `work/systolic2x2/`, and it does not touch `work/gcd/`.
+design's `WORK_HOME`. That target removes the generated stage databases,
+netlists, DEF, SDC, SPEF, GDS, reports, logs, and `objects/`. It leaves
+`results/.../6_final.cdl`, `results/.../6_lvs.lvsdb`, and
+`reports/.../6_drc.lyrdb`. It also leaves `summary.md`, `summary.json`, and
+`metadata.json` in `work/systolic2x2/`, and it does not touch `work/gcd/`.
 
 Open the final database in the OpenROAD GUI:
 

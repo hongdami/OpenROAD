@@ -23,6 +23,10 @@ class ProjectContractTest(unittest.TestCase):
         text = (ROOT / "scripts/check_environment.sh").read_text()
         for tool in ("yosys -V", "openroad -version", "klayout -v"):
             self.assertIn(tool, text)
+        self.assertIn(
+            'git -C "$PROJECT_ROOT/OpenROAD-flow-scripts" rev-parse HEAD',
+            text,
+        )
 
     def test_flow_scripts_preserve_stage_failures(self):
         baseline = (ROOT / "scripts/run_gcd_baseline.sh").read_text()
