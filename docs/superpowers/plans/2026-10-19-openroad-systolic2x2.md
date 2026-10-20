@@ -45,7 +45,7 @@ removed.
 | `scripts/check_environment.sh` | Validate Docker, mounts, space, image, and tool versions. |
 | `scripts/run_gcd_baseline.sh` | Run and gate on the official SKY130HD GCD flow. |
 | `scripts/run_systolic2x2.sh` | Run, clean, or open the custom flow. |
-| `scripts/export_spef.tcl` | Export final extracted parasitics from the final ODB. |
+| `scripts/check_signoff.sh` | Host-side gate on DRC count, LVS verdict, and (optionally) final timing. |
 | `scripts/summarize_results.py` | Convert ORFS metadata and signoff files into JSON/Markdown. |
 | `examples/systolic2x2/rtl/processing_element.sv` | One registered signed MAC and wavefront hop. |
 | `examples/systolic2x2/rtl/systolic2x2.sv` | Four-PE array, boundary skewing, and completion signal. |
@@ -54,6 +54,7 @@ removed.
 | `tests/yosys/processing_element.ys` | PE elaboration and structural checks. |
 | `tests/yosys/systolic2x2.ys` | Array hierarchy, loop, latch, and multiplier checks. |
 | `tests/test_project_contract.py` | Fast host-side tests for scripts and configuration. |
+| `tests/test_check_signoff.py` | Behavioral tests for `check_signoff.sh` against fake reports. |
 | `tests/test_summarize_results.py` | Unit tests for result classification and reporting. |
 | `README.md` | User-facing setup, execution, outputs, and limitations. |
 
@@ -610,14 +611,24 @@ git commit -m "feat: configure SKY130HD physical flow"
 **Files:**
 - Create: `scripts/run_gcd_baseline.sh`
 - Create: `scripts/run_systolic2x2.sh`
-- Create: `scripts/export_spef.tcl`
+- Create: `scripts/check_signoff.sh`
+- Create: `tests/test_check_signoff.py`
 - Modify: `tests/test_project_contract.py`
 
 **Interfaces:**
-- Produces: `work/gcd/PASS` only after GCD `all`, `drc`, and `lvs` targets.
+- Produces: `work/gcd/PASS` only after GCD `all`, `drc`, and `lvs` targets
+  and a clean `check_signoff.sh` DRC/LVS verdict (timing reported, not
+  required; a negative WNS prints an explicit warning).
 - Consumes: `work/gcd/PASS` before any custom full run.
-- Produces: `work/systolic2x2/PASS` only after custom `all`, `drc`, and `lvs`.
-- Supports: `scripts/run_systolic2x2.sh --clean` and `--gui`.
+- Produces: `work/systolic2x2/PASS` only after custom `all`, `drc`, and `lvs`,
+  a non-empty ORFS `6_final.spef`, and `check_signoff.sh --require-timing`.
+- Supports: `scripts/run_systolic2x2.sh --clean` (also removes `PASS`) and
+  `--gui`; any other argument prints usage and exits 2.
+- `scripts/check_signoff.sh [--require-timing] RESULTS_DIR REPORTS_DIR LOGS_DIR`
+  fails unless `6_final.gds` is non-empty, `6_drc_count.rpt` is exactly `0`,
+  and `6_lvs.log` contains `Congratulations! Netlists match.` without
+  `Netlists don't match`; it prints `wns max`/`tns max` from `6_finish.rpt`
+  and, with `--require-timing`, fails on missing or negative WNS.
 
 - [ ] **Step 1: Add failing orchestration assertions**
 
@@ -668,23 +679,31 @@ for target in all drc lvs; do
     "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" "$target"
 done
 
-test -f "$STATUS_DIR/results/sky130hd/gcd/base/6_final.gds"
-test -f "$STATUS_DIR/reports/sky130hd/gcd/base/6_drc_count.rpt"
+CURRENT_STAGE=signoff
+signoff="$("$PROJECT_ROOT/scripts/check_signoff.sh" \
+  "$STATUS_DIR/results/sky130hd/gcd/base" \
+  "$STATUS_DIR/reports/sky130hd/gcd/base" \
+  "$STATUS_DIR/logs/sky130hd/gcd/base")"
+printf '%s\n' "$signoff"
+timing="$(sed -n 's/^timing: \(.*\); not met$/\1/p' <<<"$signoff")"
+if [[ -n "$timing" ]]; then
+  echo "WARNING: GCD baseline timing not met ($timing);" \
+    "baseline gates toolchain/DRC/LVS only" >&2
+fi
+
 touch "$STATUS_DIR/PASS"
-echo "GCD baseline passed"
+echo "GCD baseline toolchain/DRC/LVS gate passed"
 ```
+
+`scripts/check_signoff.sh` is the shared host-side verdict check used by both
+run scripts; its behavior is covered by `tests/test_check_signoff.py` (clean
+pass, DRC count 3, LVS mismatch, missing LVS log, negative WNS with and
+without `--require-timing`, missing WNS line).
 
 - [ ] **Step 4: Implement custom run, clean, and GUI modes**
 
-Create the final parasitic-export command:
-
-```tcl
-# scripts/export_spef.tcl
-if {![info exists ::env(SPEF_OUT)]} {
-  error "SPEF_OUT is not set"
-}
-write_spef $::env(SPEF_OUT)
-```
+ORFS already writes extracted parasitics to `6_final.spef`; the run script
+requires that file to be non-empty instead of re-exporting it.
 
 ```bash
 #!/usr/bin/env bash
@@ -696,15 +715,25 @@ RUN_HOME=/work/work/systolic2x2
 CONFIG=/work/examples/systolic2x2/config.mk
 STATUS_DIR="$PROJECT_ROOT/work/systolic2x2"
 
-if [[ "${1:-}" == "--clean" ]]; then
-  exec "$PROJECT_ROOT/scripts/orfs_container.sh" make \
-    "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" clean_all
-fi
+usage() {
+  echo "usage: $0 [--clean | --gui]" >&2
+  exit 2
+}
 
-if [[ "${1:-}" == "--gui" ]]; then
-  exec "$PROJECT_ROOT/scripts/orfs_container.sh" --gui make \
-    "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" gui_final
-fi
+[[ $# -le 1 ]] || usage
+case "${1:-}" in
+  "") ;;
+  --clean)
+    rm -f "$STATUS_DIR/PASS"
+    exec "$PROJECT_ROOT/scripts/orfs_container.sh" make \
+      "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" clean_all
+    ;;
+  --gui)
+    exec "$PROJECT_ROOT/scripts/orfs_container.sh" --gui make \
+      "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" gui_final
+    ;;
+  *) usage ;;
+esac
 
 [[ -f "$PROJECT_ROOT/work/gcd/PASS" ]] || {
   echo "run scripts/run_gcd_baseline.sh first" >&2
@@ -724,19 +753,20 @@ done
 
 RESULTS="$STATUS_DIR/results/sky130hd/systolic2x2/base"
 REPORTS="$STATUS_DIR/reports/sky130hd/systolic2x2/base"
-CURRENT_STAGE=export_spef
-"$PROJECT_ROOT/scripts/orfs_container.sh" env \
-  SPEF_OUT=/work/work/systolic2x2/results/sky130hd/systolic2x2/base/6_final.spef \
-  openroad -no_splash -exit -db \
-  /work/work/systolic2x2/results/sky130hd/systolic2x2/base/6_final.odb \
-  /work/scripts/export_spef.tcl
+LOGS="$STATUS_DIR/logs/sky130hd/systolic2x2/base"
+CURRENT_STAGE=verify_artifacts
+test -s "$RESULTS/6_final.spef"
 for artifact in 6_final.v 6_final.sdc 6_final.def 6_final.odb \
-                6_final.spef 6_final.gds 6_final.cdl 6_lvs.lvsdb; do
+                6_final.cdl 6_lvs.lvsdb; do
   test -f "$RESULTS/$artifact"
 done
-test -f "$REPORTS/6_drc_count.rpt"
+
+CURRENT_STAGE=signoff
+"$PROJECT_ROOT/scripts/check_signoff.sh" --require-timing \
+  "$RESULTS" "$REPORTS" "$LOGS"
+
 touch "$STATUS_DIR/PASS"
-echo "systolic2x2 flow completed; inspect timing, DRC, and LVS status"
+echo "systolic2x2 flow passed DRC, LVS, and timing checks (educational, not tapeout signoff)"
 ```
 
 - [ ] **Step 5: Validate scripts without running the long flow**
@@ -744,9 +774,11 @@ echo "systolic2x2 flow completed; inspect timing, DRC, and LVS status"
 Run:
 
 ```bash
-chmod +x scripts/run_gcd_baseline.sh scripts/run_systolic2x2.sh
-bash -n scripts/run_gcd_baseline.sh scripts/run_systolic2x2.sh
-python3 -m unittest tests.test_project_contract -v
+chmod +x scripts/run_gcd_baseline.sh scripts/run_systolic2x2.sh \
+  scripts/check_signoff.sh
+bash -n scripts/run_gcd_baseline.sh scripts/run_systolic2x2.sh \
+  scripts/check_signoff.sh
+python3 -m unittest tests.test_project_contract tests.test_check_signoff -v
 ```
 
 Expected: syntax checks and all contract tests pass.
@@ -768,8 +800,8 @@ rerunning.
 
 ```bash
 git add scripts/run_gcd_baseline.sh scripts/run_systolic2x2.sh \
-  scripts/export_spef.tcl \
-  tests/test_project_contract.py
+  scripts/check_signoff.sh \
+  tests/test_project_contract.py tests/test_check_signoff.py
 git commit -m "feat: gate and run ORFS physical flows"
 ```
 
@@ -1125,3 +1157,8 @@ The explicit `scripts/export_spef.tcl` step was removed. ORFS already writes
 extracted parasitics to `6_final.spef`; re-reading that file in a bare ODB
 session failed because no Liberty libraries were loaded. `run_systolic2x2.sh`
 now requires ORFS's `6_final.spef` to be non-empty before writing `PASS`.
+Because ORFS `make drc` and the sky130hd LVS deck exit 0 even on violations,
+both run scripts now call the shared host-side `scripts/check_signoff.sh`,
+which requires a DRC count of exactly `0` and an LVS match verdict, and (for
+`run_systolic2x2.sh` via `--require-timing`) a non-negative final WNS; the GCD
+baseline only warns on its upstream negative WNS.

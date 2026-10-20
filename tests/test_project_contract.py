@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,36 @@ class ProjectContractTest(unittest.TestCase):
         self.assertIn('[[ -f "$PROJECT_ROOT/work/gcd/PASS" ]]', custom)
         self.assertIn("gui_final", custom)
         self.assertIn('test -s "$RESULTS/6_final.spef"', custom)
+        self.assertEqual(custom.count("6_final.spef"), 1)
+
+    def test_flow_scripts_gate_pass_on_signoff_verdicts(self):
+        baseline = (ROOT / "scripts/run_gcd_baseline.sh").read_text()
+        custom = (ROOT / "scripts/run_systolic2x2.sh").read_text()
+        checker = "scripts/check_signoff.sh"
+        for text in (baseline, custom):
+            self.assertIn(checker, text)
+            self.assertLess(text.index(checker), text.index("touch"))
+            self.assertNotIn("6_drc_count.rpt", text)
+        self.assertIn(f'{checker}" --require-timing', custom)
+        self.assertNotIn("--require-timing", baseline)
+        self.assertIn("WARNING: GCD baseline timing not met", baseline)
+        self.assertIn("GCD baseline toolchain/DRC/LVS gate passed", baseline)
+        self.assertNotIn('echo "GCD baseline passed"', baseline)
+
+    def test_custom_flow_rejects_unknown_args_and_clears_pass(self):
+        custom = (ROOT / "scripts/run_systolic2x2.sh").read_text()
+        clean_branch = custom[custom.index("--clean)"):]
+        self.assertLess(
+            clean_branch.index('rm -f "$STATUS_DIR/PASS"'),
+            clean_branch.index("clean_all"),
+        )
+        proc = subprocess.run(
+            ["bash", str(ROOT / "scripts/run_systolic2x2.sh"), "--bogus"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("usage:", proc.stderr)
 
     def test_orfs_configuration_contract(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()

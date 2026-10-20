@@ -7,15 +7,25 @@ RUN_HOME=/work/work/systolic2x2
 CONFIG=/work/examples/systolic2x2/config.mk
 STATUS_DIR="$PROJECT_ROOT/work/systolic2x2"
 
-if [[ "${1:-}" == "--clean" ]]; then
-  exec "$PROJECT_ROOT/scripts/orfs_container.sh" make \
-    "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" clean_all
-fi
+usage() {
+  echo "usage: $0 [--clean | --gui]" >&2
+  exit 2
+}
 
-if [[ "${1:-}" == "--gui" ]]; then
-  exec "$PROJECT_ROOT/scripts/orfs_container.sh" --gui make \
-    "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" gui_final
-fi
+[[ $# -le 1 ]] || usage
+case "${1:-}" in
+  "") ;;
+  --clean)
+    rm -f "$STATUS_DIR/PASS"
+    exec "$PROJECT_ROOT/scripts/orfs_container.sh" make \
+      "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" clean_all
+    ;;
+  --gui)
+    exec "$PROJECT_ROOT/scripts/orfs_container.sh" --gui make \
+      "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" gui_final
+    ;;
+  *) usage ;;
+esac
 
 [[ -f "$PROJECT_ROOT/work/gcd/PASS" ]] || {
   echo "run scripts/run_gcd_baseline.sh first" >&2
@@ -35,12 +45,17 @@ done
 
 RESULTS="$STATUS_DIR/results/sky130hd/systolic2x2/base"
 REPORTS="$STATUS_DIR/reports/sky130hd/systolic2x2/base"
+LOGS="$STATUS_DIR/logs/sky130hd/systolic2x2/base"
 CURRENT_STAGE=verify_artifacts
 test -s "$RESULTS/6_final.spef"
 for artifact in 6_final.v 6_final.sdc 6_final.def 6_final.odb \
-                6_final.spef 6_final.gds 6_final.cdl 6_lvs.lvsdb; do
+                6_final.cdl 6_lvs.lvsdb; do
   test -f "$RESULTS/$artifact"
 done
-test -f "$REPORTS/6_drc_count.rpt"
+
+CURRENT_STAGE=signoff
+"$PROJECT_ROOT/scripts/check_signoff.sh" --require-timing \
+  "$RESULTS" "$REPORTS" "$LOGS"
+
 touch "$STATUS_DIR/PASS"
-echo "systolic2x2 flow completed; inspect timing, DRC, and LVS status"
+echo "systolic2x2 flow passed DRC, LVS, and timing checks (educational, not tapeout signoff)"
