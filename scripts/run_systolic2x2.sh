@@ -57,5 +57,21 @@ CURRENT_STAGE=signoff
 "$PROJECT_ROOT/scripts/check_signoff.sh" --require-timing \
   "$RESULTS" "$REPORTS" "$LOGS"
 
+CURRENT_STAGE=metrics
+"$PROJECT_ROOT/scripts/orfs_container.sh" python3 \
+  /OpenROAD-flow-scripts/flow/util/genMetrics.py \
+  --design systolic2x2 --platform sky130hd --flowVariant base \
+  --logs "${LOGS/#"$STATUS_DIR"/$RUN_HOME}" \
+  --reports "${REPORTS/#"$STATUS_DIR"/$RUN_HOME}" \
+  --results "${RESULTS/#"$STATUS_DIR"/$RUN_HOME}" \
+  --output "$RUN_HOME/metadata.json"
+
+CURRENT_STAGE=summary
+python3 "$PROJECT_ROOT/scripts/summarize_results.py" \
+  --results "$RESULTS" --reports "$REPORTS" --logs "$LOGS" \
+  --metadata "$STATUS_DIR/metadata.json" \
+  --toolchain "$PROJECT_ROOT/work/toolchain-versions.txt" \
+  --out-dir "$STATUS_DIR"
+
 touch "$STATUS_DIR/PASS"
 echo "systolic2x2 flow passed DRC, LVS, and timing checks (educational, not tapeout signoff)"
