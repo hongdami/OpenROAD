@@ -4,7 +4,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_HOME=/work/work/gcd
-CONFIG=/OpenROAD-flow-scripts/flow/designs/nangate45/gcd/config.mk
+CONFIG=/OpenROAD-flow-scripts/flow/designs/sky130hd/gcd/config.mk
 STATUS_DIR="$PROJECT_ROOT/work/gcd"
 CURRENT_STAGE=preflight
 
@@ -18,7 +18,7 @@ for target in all drc lvs; do
     "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" "$target"
 done
 
-test -f "$STATUS_DIR/results/nangate45/gcd/base/6_final.gds"
-test -f "$STATUS_DIR/reports/nangate45/gcd/base/6_drc_count.rpt"
+test -f "$STATUS_DIR/results/sky130hd/gcd/base/6_final.gds"
+test -f "$STATUS_DIR/reports/sky130hd/gcd/base/6_drc_count.rpt"
 touch "$STATUS_DIR/PASS"
 echo "GCD baseline passed"

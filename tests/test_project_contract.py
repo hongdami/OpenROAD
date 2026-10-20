@@ -28,35 +28,35 @@ class ProjectContractTest(unittest.TestCase):
         custom = (ROOT / "scripts/run_systolic2x2.sh").read_text()
         self.assertIn("set -euo pipefail", baseline)
         self.assertIn("set -euo pipefail", custom)
+        self.assertIn(
+            "/flow/designs/sky130hd/gcd/config.mk", baseline
+        )
+        self.assertIn("results/sky130hd/gcd/base", baseline)
+        self.assertIn("results/sky130hd/systolic2x2/base", custom)
+        self.assertIn("reports/sky130hd/systolic2x2/base", custom)
         self.assertLess(baseline.index(" all"), baseline.index(" drc"))
         self.assertLess(baseline.index(" drc"), baseline.index(" lvs"))
         self.assertIn('[[ -f "$PROJECT_ROOT/work/gcd/PASS" ]]', custom)
         self.assertIn("gui_final", custom)
+        self.assertIn('test -s "$RESULTS/6_final.spef"', custom)
 
     def test_orfs_configuration_contract(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()
         sdc = (ROOT / "examples/systolic2x2/constraint.sdc").read_text()
-        pdn = (ROOT / "examples/systolic2x2/pdn.tcl").read_text()
         for value in (
             "DESIGN_NAME = systolic2x2",
-            "PLATFORM = nangate45",
+            "PLATFORM = sky130hd",
             "/work/examples/systolic2x2/rtl/processing_element.sv",
             "/work/examples/systolic2x2/rtl/systolic2x2.sv",
             "CORE_UTILIZATION ?= 35",
         ):
             self.assertIn(value, config)
+        self.assertNotIn("PDN_TCL", config)
+        self.assertFalse(
+            (ROOT / "examples/systolic2x2/pdn.tcl").exists()
+        )
         self.assertIn("set clk_period 10.0", sdc)
         self.assertIn("create_clock", sdc)
-        for value in (
-            "set_voltage_domain -name CORE -power VDD -ground VSS",
-            "define_pdn_grid -name grid -voltage_domains CORE -pins metal7",
-            "add_pdn_stripe -grid grid -layer metal1",
-            "add_pdn_stripe -grid grid -layer metal4",
-            "add_pdn_stripe -grid grid -layer metal7",
-            "add_pdn_connect -grid grid -layers {metal1 metal4}",
-            "add_pdn_connect -grid grid -layers {metal4 metal7}",
-        ):
-            self.assertIn(value, pdn)
 
     def test_orfs_signed_port_compatibility_adapter(self):
         config = (ROOT / "examples/systolic2x2/config.mk").read_text()

@@ -1,12 +1,11 @@
 # examples/systolic2x2/config.mk
 export DESIGN_NAME = systolic2x2
-export PLATFORM = nangate45
+export PLATFORM = sky130hd
 
 export VERILOG_FILES = \
   /work/examples/systolic2x2/rtl/processing_element.sv \
   /work/examples/systolic2x2/rtl/systolic2x2.sv
 export SDC_FILE = /work/examples/systolic2x2/constraint.sdc
-export PDN_TCL = /work/examples/systolic2x2/pdn.tcl
 export SYNTH_CANONICALIZE_TCL = /work/examples/systolic2x2/orfs_canonicalize.tcl
 
 export CORE_UTILIZATION ?= 35

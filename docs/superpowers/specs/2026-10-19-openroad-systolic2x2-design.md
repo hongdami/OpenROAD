@@ -16,26 +16,26 @@ therefore used for the complete RTL-to-GDSII toolchain.
 
 The example will:
 
-- Use the educational Nangate45 platform.
+- Use the SKY130HD platform.
 - Run an official ORFS GCD design as an environment baseline.
 - Implement a small 2×2 signed integer systolic array.
 - Complete synthesis, floorplanning, placement, CTS, routing, extraction, and
   final reporting.
 - Produce artifacts suitable for inspection in the OpenROAD GUI.
-- Generate GDS and execute the Nangate45 KLayout DRC/LVS checks supplied by
+- Generate GDS and execute the SKY130HD KLayout DRC/LVS checks supplied by
   ORFS.
 - Summarize timing, area, utilization, power estimate, and physical
   verification results.
 
 The example will not add SRAMs, AXI, DMA, floating point, quantization logic,
-or a full RTL functional-verification environment. Nangate45 DRC/LVS is an
-educational check and is not tapeout signoff.
+or a full RTL functional-verification environment. SKY130HD DRC/LVS in this
+example is an educational check and is not tapeout signoff.
 
 ## Selected approach
 
 Use an official ORFS container and validate the setup in two steps:
 
-1. Run the checked-in Nangate45 GCD flow.
+1. Run the checked-in SKY130HD GCD flow.
 2. Run the external `systolic2x2` design.
 
 This separates environment failures from custom RTL or constraint failures.
@@ -62,8 +62,7 @@ chip-design/
 │       │   ├── processing_element.sv
 │       │   └── systolic2x2.sv
 │       ├── constraint.sdc
-│       ├── config.mk
-│       └── pdn.tcl
+│       └── config.mk
 ├── scripts/
 │   ├── check_environment.sh
 │   ├── run_gcd_baseline.sh
@@ -114,16 +113,26 @@ The design has one clock domain and no generated clocks, memories, macros, or
 black boxes. These boundaries keep the first physical-design example focused
 on standard-cell implementation.
 
+## Platform amendment — 2026-10-19
+
+SKY130HD supersedes Nangate45 for the final implementation. The pinned
+official ORFS Nangate45 configuration references
+`platforms/nangate45/lvs/FreePDK45.lylvs`, but that deck does not exist in the
+pinned checkout or official upstream history. The failed Nangate45 baseline
+remains preserved in the Task 5 report as historical diagnostic evidence.
+SKY130HD provides an official KLayout LVS deck and keeps the required
+baseline/custom `all`, `drc`, and `lvs` checks intact without bypassing
+physical verification.
+
 ## Constraints and platform configuration
 
-- Platform: `nangate45`.
+- Platform: `sky130hd`.
 - Initial clock period: 10 ns (100 MHz).
 - One clock is defined on the top-level clock port.
 - Input and output delay constraints are defined relative to that clock.
 - Die/core sizing starts from ORFS automatic sizing with conservative core
   utilization.
-- The local PDN configuration uses a grid pitch suitable for a very small
-  block, based on the same need addressed by the ORFS Nangate45 GCD example.
+- The design inherits the official SKY130HD platform PDN configuration.
 - Platform LEF, Liberty, cell GDS/CDL, routing rules, and RC models come from
   ORFS rather than being copied into the user example.
 
@@ -136,7 +145,7 @@ a condition for initial success.
 flowchart LR
     RTL[SystemVerilog RTL] --> SYN[Yosys synthesis]
     SDC[SDC constraints] --> SYN
-    NG[Nangate45 platform data] --> SYN
+    SKY[SKY130HD platform data] --> SYN
     SYN --> FP[Floorplan and PDN]
     FP --> PL[Placement]
     PL --> CTS[Clock-tree synthesis]
@@ -205,7 +214,7 @@ Verify container execution and record exact source/image/tool versions.
 
 ### Baseline
 
-Run the official ORFS Nangate45 GCD design through the required stages and
+Run the official ORFS SKY130HD GCD design through the required stages and
 check its expected artifacts.
 
 ### RTL and flow structure
@@ -228,5 +237,5 @@ key outputs and regenerate the summary.
 ## Future extensions
 
 Possible follow-on work includes a Verilator testbench, VCD/SAIF-driven power,
-larger arrays, SRAM macros, alternative clock targets, SKY130 migration, and
-PPA sweeps. None of these are prerequisites for the first example.
+larger arrays, SRAM macros, alternative clock targets, other PDKs, and PPA
+sweeps. None of these are prerequisites for the first example.

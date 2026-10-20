@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a reproducible Nangate45 RTL-to-GDSII example for a 2×2 signed systolic array, including reports, GUI data, GDS, DRC, and LVS.
+**Goal:** Build a reproducible SKY130HD RTL-to-GDSII example for a 2×2 signed systolic array, including reports, GUI data, GDS, DRC, and LVS.
 
 **Architecture:** Keep the existing `OpenROAD/` checkout unchanged. Use a pinned official ORFS container together with a shallow `OpenROAD-flow-scripts/` checkout, mount this project at `/work`, and drive the external design through `DESIGN_CONFIG=/work/examples/systolic2x2/config.mk`. Gate the custom run on a successful official GCD baseline.
 
@@ -10,16 +10,27 @@
 
 ## Global Constraints
 
-- Platform is `nangate45`.
+- Platform is `sky130hd`.
 - Initial clock period is exactly `10.0 ns`.
 - Each PE uses signed 8-bit A/B operands and a signed 24-bit accumulator.
 - The array has one synchronous-reset clock domain and no SRAM, macros, generated clocks, AXI, DMA, floating point, or quantization logic.
 - The first transaction contains two consecutive valid cycles; `start` is asserted on the first and `last` on the second.
 - `done` pulses when the bottom-right PE consumes its local `last` token.
 - Keep `OpenROAD/` unchanged.
-- Treat Nangate45 DRC/LVS as an educational check, not tapeout signoff.
+- Treat SKY130HD DRC/LVS as an educational check, not tapeout signoff.
 - Treat default ORFS power as a vectorless estimate, not workload power.
 - Never convert a DRC, LVS, routing, or timing failure into an unconditional pass.
+
+## Platform amendment — 2026-10-19
+
+SKY130HD supersedes Nangate45 for final implementation. The pinned official
+ORFS Nangate45 config references the nonexistent
+`platforms/nangate45/lvs/FreePDK45.lylvs`; that failed baseline is retained as
+historical diagnostic evidence in `.superpowers/sdd/task-5-report.md`.
+SKY130HD supplies an official LVS deck, so the baseline and custom flows keep
+the required `all`, `drc`, and `lvs` gates. The custom design uses the
+official SKY130HD platform PDN; the former local Nangate45 M1/M4/M7 PDN is
+removed.
 
 ---
 
@@ -32,15 +43,14 @@
 | `toolchain/orfs-commit.txt` | Record the host ORFS flow-script revision. |
 | `scripts/orfs_container.sh` | Run one command with the pinned image and both host mounts. |
 | `scripts/check_environment.sh` | Validate Docker, mounts, space, image, and tool versions. |
-| `scripts/run_gcd_baseline.sh` | Run and gate on the official Nangate45 GCD flow. |
+| `scripts/run_gcd_baseline.sh` | Run and gate on the official SKY130HD GCD flow. |
 | `scripts/run_systolic2x2.sh` | Run, clean, or open the custom flow. |
 | `scripts/export_spef.tcl` | Export final extracted parasitics from the final ODB. |
 | `scripts/summarize_results.py` | Convert ORFS metadata and signoff files into JSON/Markdown. |
 | `examples/systolic2x2/rtl/processing_element.sv` | One registered signed MAC and wavefront hop. |
 | `examples/systolic2x2/rtl/systolic2x2.sv` | Four-PE array, boundary skewing, and completion signal. |
 | `examples/systolic2x2/constraint.sdc` | 10 ns clock and I/O timing constraints. |
-| `examples/systolic2x2/config.mk` | External ORFS Nangate45 design configuration. |
-| `examples/systolic2x2/pdn.tcl` | Small-block M1/M4/M7 power grid. |
+| `examples/systolic2x2/config.mk` | External ORFS SKY130HD design configuration using the official platform PDN. |
 | `tests/yosys/processing_element.ys` | PE elaboration and structural checks. |
 | `tests/yosys/systolic2x2.ys` | Array hierarchy, loop, latch, and multiplier checks. |
 | `tests/test_project_contract.py` | Fast host-side tests for scripts and configuration. |
@@ -480,17 +490,17 @@ git add examples/systolic2x2/rtl/systolic2x2.sv \
 git commit -m "feat: assemble 2x2 systolic array"
 ```
 
-### Task 4: Nangate45 ORFS design configuration
+### Task 4: SKY130HD ORFS design configuration
 
 **Files:**
 - Create: `examples/systolic2x2/constraint.sdc`
 - Create: `examples/systolic2x2/config.mk`
-- Create: `examples/systolic2x2/pdn.tcl`
 - Modify: `tests/test_project_contract.py`
 
 **Interfaces:**
-- Consumes: RTL from Tasks 2–3 and ORFS's Nangate45 platform files.
-- Produces: an external ORFS `DESIGN_CONFIG` with a 10 ns clock and local PDN.
+- Consumes: RTL from Tasks 2–3 and ORFS's SKY130HD platform files.
+- Produces: an external ORFS `DESIGN_CONFIG` with a 10 ns clock and the
+  official platform PDN.
 
 - [ ] **Step 1: Add failing configuration assertions**
 
@@ -502,7 +512,7 @@ Add this method to `ProjectContractTest`:
         sdc = (ROOT / "examples/systolic2x2/constraint.sdc").read_text()
         for value in (
             "DESIGN_NAME = systolic2x2",
-            "PLATFORM = nangate45",
+            "PLATFORM = sky130hd",
             "/work/examples/systolic2x2/rtl/processing_element.sv",
             "/work/examples/systolic2x2/rtl/systolic2x2.sv",
             "CORE_UTILIZATION ?= 35",
@@ -527,13 +537,12 @@ Expected: the new method errors because `config.mk` is absent.
 ```make
 # examples/systolic2x2/config.mk
 export DESIGN_NAME = systolic2x2
-export PLATFORM = nangate45
+export PLATFORM = sky130hd
 
 export VERILOG_FILES = \
   /work/examples/systolic2x2/rtl/processing_element.sv \
   /work/examples/systolic2x2/rtl/systolic2x2.sv
 export SDC_FILE = /work/examples/systolic2x2/constraint.sdc
-export PDN_TCL = /work/examples/systolic2x2/pdn.tcl
 
 export CORE_UTILIZATION ?= 35
 export PLACE_DENSITY_LB_ADDON = 0.10
@@ -569,35 +578,7 @@ set_output_delay [expr $clk_period * $clk_io_pct] \
   -clock $clk_io_name [all_outputs]
 ```
 
-- [ ] **Step 5: Add the small-block power grid**
-
-```tcl
-# examples/systolic2x2/pdn.tcl
-add_global_connection -net VDD -inst_pattern {.*} \
-  -pin_pattern {^VDD$} -power
-add_global_connection -net VDD -inst_pattern {.*} \
-  -pin_pattern {^VDDPE$}
-add_global_connection -net VDD -inst_pattern {.*} \
-  -pin_pattern {^VDDCE$}
-add_global_connection -net VSS -inst_pattern {.*} \
-  -pin_pattern {^VSS$} -ground
-add_global_connection -net VSS -inst_pattern {.*} \
-  -pin_pattern {^VSSE$}
-global_connect
-
-set_voltage_domain -name CORE -power VDD -ground VSS
-define_pdn_grid -name grid -voltage_domains CORE -pins metal7
-add_pdn_stripe -grid grid -layer metal1 -width 0.17 \
-  -pitch 2.4 -offset 0 -followpins
-add_pdn_stripe -grid grid -layer metal4 -width 0.48 \
-  -pitch 56.0 -offset 2
-add_pdn_stripe -grid grid -layer metal7 -width 1.40 \
-  -pitch 30.0 -offset 2
-add_pdn_connect -grid grid -layers {metal1 metal4}
-add_pdn_connect -grid grid -layers {metal4 metal7}
-```
-
-- [ ] **Step 6: Validate configuration and run synthesis only**
+- [ ] **Step 5: Validate configuration and run synthesis only**
 
 Run:
 
@@ -606,22 +587,22 @@ python3 -m unittest tests.test_project_contract -v
 scripts/orfs_container.sh make \
   DESIGN_CONFIG=/work/examples/systolic2x2/config.mk \
   WORK_HOME=/work/work/systolic2x2 synth
-test -f work/systolic2x2/results/nangate45/systolic2x2/base/1_synth.odb
+test -f work/systolic2x2/results/sky130hd/systolic2x2/base/1_synth.odb
 rg -n 'Latch inferred|Warning:.*loop|Module.*not found' \
-  work/systolic2x2/logs/nangate45/systolic2x2/base/1_2_yosys.log \
+  work/systolic2x2/logs/sky130hd/systolic2x2/base/1_2_yosys.log \
   && exit 1 || true
 ```
 
 Expected: all unit tests pass, `1_synth.odb` exists, and the forbidden-pattern
 search finds nothing.
 
-- [ ] **Step 7: Commit the physical configuration**
+- [ ] **Step 6: Commit the physical configuration**
 
 ```bash
 git add examples/systolic2x2/config.mk \
-  examples/systolic2x2/constraint.sdc examples/systolic2x2/pdn.tcl \
+  examples/systolic2x2/constraint.sdc \
   tests/test_project_contract.py
-git commit -m "feat: configure Nangate45 physical flow"
+git commit -m "feat: configure SKY130HD physical flow"
 ```
 
 ### Task 5: Baseline gate and custom flow orchestration
@@ -673,7 +654,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_HOME=/work/work/gcd
-CONFIG=/OpenROAD-flow-scripts/flow/designs/nangate45/gcd/config.mk
+CONFIG=/OpenROAD-flow-scripts/flow/designs/sky130hd/gcd/config.mk
 STATUS_DIR="$PROJECT_ROOT/work/gcd"
 CURRENT_STAGE=preflight
 
@@ -687,8 +668,8 @@ for target in all drc lvs; do
     "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" "$target"
 done
 
-test -f "$STATUS_DIR/results/nangate45/gcd/base/6_final.gds"
-test -f "$STATUS_DIR/reports/nangate45/gcd/base/6_drc_count.rpt"
+test -f "$STATUS_DIR/results/sky130hd/gcd/base/6_final.gds"
+test -f "$STATUS_DIR/reports/sky130hd/gcd/base/6_drc_count.rpt"
 touch "$STATUS_DIR/PASS"
 echo "GCD baseline passed"
 ```
@@ -741,13 +722,13 @@ for target in all drc lvs; do
     "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" "$target"
 done
 
-RESULTS="$STATUS_DIR/results/nangate45/systolic2x2/base"
-REPORTS="$STATUS_DIR/reports/nangate45/systolic2x2/base"
+RESULTS="$STATUS_DIR/results/sky130hd/systolic2x2/base"
+REPORTS="$STATUS_DIR/reports/sky130hd/systolic2x2/base"
 CURRENT_STAGE=export_spef
 "$PROJECT_ROOT/scripts/orfs_container.sh" env \
-  SPEF_OUT=/work/work/systolic2x2/results/nangate45/systolic2x2/base/6_final.spef \
+  SPEF_OUT=/work/work/systolic2x2/results/sky130hd/systolic2x2/base/6_final.spef \
   openroad -no_splash -exit -db \
-  /work/work/systolic2x2/results/nangate45/systolic2x2/base/6_final.odb \
+  /work/work/systolic2x2/results/sky130hd/systolic2x2/base/6_final.odb \
   /work/scripts/export_spef.tcl
 for artifact in 6_final.v 6_final.sdc 6_final.def 6_final.odb \
                 6_final.spef 6_final.gds 6_final.cdl 6_lvs.lvsdb; do
@@ -975,17 +956,17 @@ Insert these commands immediately before `touch "$STATUS_DIR/PASS"` in
 ```bash
 "$PROJECT_ROOT/scripts/orfs_container.sh" python3 \
   /OpenROAD-flow-scripts/flow/util/genMetrics.py \
-  --design systolic2x2 --platform nangate45 --flowVariant base \
-  --logs /work/work/systolic2x2/logs/nangate45/systolic2x2/base \
-  --reports /work/work/systolic2x2/reports/nangate45/systolic2x2/base \
-  --results /work/work/systolic2x2/results/nangate45/systolic2x2/base \
+  --design systolic2x2 --platform sky130hd --flowVariant base \
+  --logs /work/work/systolic2x2/logs/sky130hd/systolic2x2/base \
+  --reports /work/work/systolic2x2/reports/sky130hd/systolic2x2/base \
+  --results /work/work/systolic2x2/results/sky130hd/systolic2x2/base \
   --output /work/work/systolic2x2/metadata.json
 
-cp "$STATUS_DIR/reports/nangate45/systolic2x2/base/6_drc_count.rpt" \
+cp "$STATUS_DIR/reports/sky130hd/systolic2x2/base/6_drc_count.rpt" \
   "$STATUS_DIR/reports/6_drc_count.rpt"
-cp "$STATUS_DIR/logs/nangate45/systolic2x2/base/6_lvs.log" \
+cp "$STATUS_DIR/logs/sky130hd/systolic2x2/base/6_lvs.log" \
   "$STATUS_DIR/logs/6_lvs.log"
-ln -sfn results/nangate45/systolic2x2/base "$STATUS_DIR/results-final"
+ln -sfn results/sky130hd/systolic2x2/base "$STATUS_DIR/results-final"
 mkdir -p "$STATUS_DIR/results"
 ln -sfn ../results-final/6_final.gds "$STATUS_DIR/results/6_final.gds"
 
@@ -1037,7 +1018,7 @@ git commit -m "feat: summarize physical design and signoff"
 # OpenROAD AI-chip physical-design example
 
 This project implements a four-PE, signed 8-bit 2×2 systolic array on the
-educational Nangate45 platform. It demonstrates RTL synthesis through GDS,
+SKY130HD platform. It demonstrates RTL synthesis through GDS,
 KLayout DRC/LVS, OpenROAD GUI inspection, and basic PPA reporting.
 
 ## Run
@@ -1072,8 +1053,8 @@ and `last` on the second. `done` pulses when all four accumulators are stable.
 
 ## Interpretation
 
-Nangate45 is an educational platform, so its DRC/LVS result is not a tapeout
-signoff. The reported power is a default vectorless estimate and does not
+The SKY130HD DRC/LVS result in this example is not a tapeout signoff. The
+reported power is a default vectorless estimate and does not
 represent an AI workload; VCD/SAIF-driven analysis is a later extension.
 ```
 
@@ -1137,3 +1118,10 @@ git log --oneline --max-count=10
 
 Expected: no tracked changes remain; nested tool checkouts and generated
 `work/` files are ignored; the implementation commits are visible.
+
+## Execution amendment (2026-10-19)
+
+The explicit `scripts/export_spef.tcl` step was removed. ORFS already writes
+extracted parasitics to `6_final.spef`; re-reading that file in a bare ODB
+session failed because no Liberty libraries were loaded. `run_systolic2x2.sh`
+now requires ORFS's `6_final.spef` to be non-empty before writing `PASS`.

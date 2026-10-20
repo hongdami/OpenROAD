@@ -33,14 +33,10 @@ for target in all drc lvs; do
     "DESIGN_CONFIG=$CONFIG" "WORK_HOME=$RUN_HOME" "$target"
 done
 
-RESULTS="$STATUS_DIR/results/nangate45/systolic2x2/base"
-REPORTS="$STATUS_DIR/reports/nangate45/systolic2x2/base"
-CURRENT_STAGE=export_spef
-"$PROJECT_ROOT/scripts/orfs_container.sh" env \
-  SPEF_OUT=/work/work/systolic2x2/results/nangate45/systolic2x2/base/6_final.spef \
-  openroad -no_splash -exit -db \
-  /work/work/systolic2x2/results/nangate45/systolic2x2/base/6_final.odb \
-  /work/scripts/export_spef.tcl
+RESULTS="$STATUS_DIR/results/sky130hd/systolic2x2/base"
+REPORTS="$STATUS_DIR/reports/sky130hd/systolic2x2/base"
+CURRENT_STAGE=verify_artifacts
+test -s "$RESULTS/6_final.spef"
 for artifact in 6_final.v 6_final.sdc 6_final.def 6_final.odb \
                 6_final.spef 6_final.gds 6_final.cdl 6_lvs.lvsdb; do
   test -f "$RESULTS/$artifact"
